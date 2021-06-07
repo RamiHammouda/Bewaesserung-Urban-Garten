@@ -53,7 +53,7 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - [x] Support float decode payload
 - [x] Support int decode payload
 - [ ] Binding Server with opensensemap.org
-##### Control Actors:
+##### Operate Actors:
 - [ ] Remote control actors manually
 - [ ] Actors operates itself automatically based on pre-configuration
 - [ ] Auto Mode and Manual Mode should be selectable
@@ -70,6 +70,11 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - [ ] An UI on mobile for convenient monitoring
 - [ ] Send Notification to user for alert 
  <br/> <br/>
+## For testing purpose
+#### THETHINGSNETWORK.ORG _(Legacy V2 Console)_
+- ##### User name: _htwgardenproject_
+- ##### Email address: _htwgardenss21@gmail.com_
+- ##### Password: _htwgarden2021_
  <br/> <br/>
 # License
 **MIT** © **HTW Berlin - IngenieurInformatik SS21** - ***Team 4:*** **Khac Hoa Le, Rami Hammouda, Jaro Machnow**
