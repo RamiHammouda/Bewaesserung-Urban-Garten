@@ -3,12 +3,21 @@
 #include <hal/hal.h>
 #include <SPI.h>
 
+#include <Wire.h>
+//#include "SSD1306Wire.h"
+#include <SSD1306.h> //For Oled
+//#include "SSD1306Wire.h"
+#define OLED_I2C_ADDR 0x3C
+#define OLED_RESET 16
+#define OLED_SDA 21 //4  //21,22 for pin on Lora32 Oled v2.1.6
+#define OLED_SCL 22 //15
+SSD1306 display (OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
+
 #include "DHT.h"
 
 // DHT digital pin and sensor type
-
-#define LEDPIN 17
-#define LEDACTOR 23
+#define LEDPIN 12
+#define LEDACTOR 15
 #define DHTPIN 25
 
 #define DHTTYPE DHT22
@@ -33,32 +42,13 @@ typedef union
 
 LoRa_Packet myTempSensor;
 char TTN_response[30];
+int commandCodeFromServer;
 
-inline void TurnOnActor() { digitalWrite(LEDACTOR, HIGH); };
+void TurnOnActor() { digitalWrite(LEDACTOR, HIGH); };
 inline void TurnOffActor() { digitalWrite(LEDACTOR, LOW); }
-inline void HandlerDownlinksFromServer(lmic_t &lmic)
-{
-  int i = 0;
-  // data received in rx slot after tx
-  Serial.print(F("Data Received: "));
-  Serial.write(lmic.frame + lmic.dataBeg, lmic.dataLen);
-  Serial.println();
 
-  //display.drawString (0, 20, "Received DATA.");
-  for (i = 0; i < lmic.dataLen; i++)
-    TTN_response[i] = lmic.frame[lmic.dataBeg + i];
 
-  TTN_response[i] = 0;
-  //display.drawString (0, 32, String(TTN_response));
-  Serial.println(String(TTN_response));
-  if (String(TTN_response) == "1")
-    TurnOnActor(); //But we can use inline fuction
-  else
-    //turnOffActor();
-    digitalWrite(LEDACTOR, LOW);
-}
-
-inline void GetAndUpdateSensorData()
+void GetAndUpdateSensorData()
 {
   temC = dht.readTemperature();
   humi = dht.readHumidity();
@@ -80,6 +70,17 @@ inline void GetAndUpdateSensorData()
   digitalWrite(LEDPIN, HIGH);
 }
 
+void displayAllInforOnOled(){
+  //oled:
+  //String text4Display = "Temp: "+ String(temC)+ "°C, Humidity: "+String(humi)+"%, Feel like: "+String(heatC)+ "°C";
+  display.drawString (0, 10, String(millis()));
+  display.drawString (0, 30, "Tempetaur    "+ String(temC)+"°C");
+  display.drawString (0, 40, "Humidity        "+ String(humi)+"%");
+  display.drawString (0, 50, "Feel like         "+ String(heatC)+"°C");
+  display.display ();
+  
+}
+
 // LoRaWAN NwkSKey, network session key
 static const PROGMEM u1_t NWKSKEY[16] = {0xA5, 0xEE, 0x9B, 0xC0, 0xC5, 0x2D, 0xC1, 0xC7, 0xFF, 0xF8, 0x75, 0x42, 0x4F, 0xFF, 0x73, 0x0E};
 // LoRaWAN AppSKey, application session key
@@ -96,8 +97,8 @@ static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 5;
-
+//const unsigned TX_INTERVAL = 5;
+unsigned TX_INTERVAL = 5;
 // Pin mapping
 const lmic_pinmap lmic_pins = {
     .nss = 18,
@@ -105,6 +106,44 @@ const lmic_pinmap lmic_pins = {
     .rst = 14,
     .dio = {26, 33, 32} // Pins for the Heltec ESP32 Lora board/ TTGO Lora32 with 3D metal antenna
 };
+
+void HandlerDownlinksFromServer(lmic_t &lmic)
+{
+  int i = 0;
+  // data received in rx slot after tx
+  Serial.print(F("Data Received: "));
+  Serial.write(lmic.frame + lmic.dataBeg, lmic.dataLen);
+  Serial.println();
+
+  //display.drawString (0, 20, "Received DATA.");
+  for (i = 0; i < lmic.dataLen; i++)
+    TTN_response[i] = lmic.frame[lmic.dataBeg + i];
+
+  TTN_response[i] = 0;
+  //display.drawString (0, 32, String(TTN_response));
+  char *pNext;
+  commandCodeFromServer = (int) (TTN_response);
+  commandCodeFromServer = strtol(TTN_response,&pNext,10);
+  display.drawString (0, 20,"Request code:"+String(commandCodeFromServer));
+  Serial.println(String(TTN_response));
+  // if (String(TTN_response) == "1")
+  //   TurnOnActor(); //But we can use inline fuction
+  // else
+  //   //turnOffActor();
+  //   digitalWrite(LEDACTOR, LOW);
+  switch (commandCodeFromServer){
+    case 1: TurnOnActor();break;
+    case 0: TurnOffActor();break;
+  }
+
+  if ((int)(commandCodeFromServer/1e5)==9){
+    Serial.println("Try to set Interval"+String(commandCodeFromServer-9e5));
+    TX_INTERVAL = commandCodeFromServer-9e5;
+  }
+
+  Serial.println("TX_INTERVAL = "+String(TX_INTERVAL));
+}
+
 
 void do_send(osjob_t *j)
 {
@@ -117,10 +156,13 @@ void do_send(osjob_t *j)
   {
     // read the temperature from the DHT22
     GetAndUpdateSensorData();
+    
 
     //sendata //Port 3 for actual binding, Port 4 for showing only
-    //LMIC_setTxData2(3, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
-    LMIC_setTxData2(4, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
+    //Connect to UI(Opensensemap and Node-red)
+    LMIC_setTxData2(3, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
+    //Connect only to TTN
+    //LMIC_setTxData2(4, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
   }
   // Next TX is scheduled after TX_COMPLETE event.
 }
@@ -156,6 +198,9 @@ void onEvent(ev_t ev)
     Serial.println(F("EV_REJOIN_FAILED"));
     break;
   case EV_TXCOMPLETE:
+    //oled
+    display.clear();
+    display.drawString (0, 0, "EV_TXCOMPLETE event!");
     Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
     if (LMIC.txrxFlags & TXRX_ACK)
       Serial.println(F("Received ack"));
@@ -168,6 +213,8 @@ void onEvent(ev_t ev)
     os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
     //Turn led:
     digitalWrite(LEDPIN, LOW);
+    displayAllInforOnOled();
+
     break;
   case EV_LOST_TSYNC:
     Serial.println(F("EV_LOST_TSYNC"));
@@ -206,7 +253,7 @@ void onEvent(ev_t ev)
 
 void setup()
 {
-  delay(5000);
+  delay(1000);
   while (!Serial)
     ;
   Serial.begin(9600);
@@ -217,6 +264,19 @@ void setup()
   dht.begin();
   pinMode(LEDPIN, OUTPUT);
   pinMode(LEDACTOR, OUTPUT);
+  
+  pinMode(22,OUTPUT);
+  digitalWrite(22,LOW);
+
+  display.init ();
+  display.flipScreenVertically ();
+  display.setFont (ArialMT_Plain_10);
+
+  display.setTextAlignment (TEXT_ALIGN_LEFT);
+
+  display.drawString (0, 0, "Init!");
+  display.display ();  
+
 
   // LMIC init
   os_init();
@@ -263,3 +323,4 @@ void loop()
 {
   os_runloop_once();
 }
+
