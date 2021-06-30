@@ -30,6 +30,7 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 #### Tools:
 - MQTT Mosquito
 - MQTT Explorer
+- MQTT Fx
 #### Server:
 - TTN (thethingsnetwork)
 #### UI Programming: 
@@ -52,17 +53,17 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - [x] Operate with ABP Mode or OTAA Mode (prefer OTAA)
 - [x] Support float decode payload
 - [x] Support int decode payload
-- [ ] Binding Server with opensensemap.org
+- [x] Binding Server with opensensemap.org
 ##### Operate Actors:
-- [ ] Remote control actors manually
+- [x] Remote control actors manually
 - [ ] Actors operates itself automatically based on pre-configuration
-- [ ] Auto Mode and Manual Mode should be selectable
+- [x] Auto Mode and Manual Mode should be selectable
 ##### Sensor Data Visualization:
-- [ ] Simple sensor data are visualizated by opensensemap
+- [x] Simple sensor data are visualizated by opensensemap
 - [ ] Complex sensor data will be visualizated by a self development UI
 ##### UI Development:
 - [ ] Create a UI to get all current information of system
-- [ ] Control actors through simple user-friendly UI like button, not on JSON UI 
+- [x] Control actors through simple user-friendly UI like button, not on JSON UI 
       (comply to requirement from Mr. Prof. Dr.-Ing. Abuosba )
 - [ ] Pre-configuration parameters should be changeable (e.g through input fields) 
       (comply to suggestion from Mr. Holger Martin )
