@@ -17,9 +17,9 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 #### IDE:
 - Visual Studio Code
 - Platform IO
-#### Framework:
+#### Frameworks:
 - Arduino
-#### Dependency:
+#### Dependencies:
 - MCCI LoraWAN LMIC Library v3.3
 - Adafruit Unified Sensor v1.1.4
 - DHT sensor library v1.4.2
@@ -35,11 +35,22 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - TTN (thethingsnetwork)
 #### UI Programming: 
 - JavaScript
-- NodeJS
+- Node-Red Framework
+#### UI Dependencies:
+- node-red-dashboard
+- node-red-contrib-ui-led
 #### Hardware Programming: 
 - C++
 #### Hardware:
-- Lora32 (TTGO)
+- Lora32 (TTGO-Lora v2.1.6)
++ BME280 Sensor
++ YF-S201 Waterflow sensor
++ Water pressure sensor 
++ HC-SR04 Ultrasonic sensor
++ Capacitive soil moisture sensor v1.2
++ Water pump
++ Magnetic Ventil
++ SRD-05VDC-SL-C 4 CH Relay
 <br/> <br/>
 # Feature List
 
