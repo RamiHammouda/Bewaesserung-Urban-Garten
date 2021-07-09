@@ -56,9 +56,9 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 
 ##### Controlling Sensors, Actors:
 - [x] Collect current ambient parameters (Temperatur sensor, Humidity sensor, Air pressure sensor.. )
-- [ ] Collect current water level in water tank (Ultrasound sensor)
-- [ ] Collect current water hose parameters (Water pressure sensor, Water flow sensor)
-- [ ] Control Actors (Water pump, Magnetic valve)
+- [x] Collect current water level in water tank (Ultrasound sensor)
+- [x] Collect current water hose parameters (Water pressure sensor, Water flow sensor)
+- [x] Control Actors (Water pump, Magnetic valve)
 ##### On LoraWan Server:
 - [x] Send collected sensor data to TTN Network
 - [x] Operate with ABP Mode or OTAA Mode (prefer OTAA)
@@ -73,14 +73,15 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - [x] Simple sensor data are visualizated by opensensemap
 - [ ] Complex sensor data will be visualizated by a self development UI
 ##### UI Development:
-- [ ] Create a UI to get all current information of system
+- [x] Create a UI to get all current information of system ( Temperatur, Humidity, Moisture Value, Air Pressure, Water Pressure, Waterflow Speed, Waterflow Volume, current status of Ventil, current status of Pump, current Update Tempo, current operation status of system)
+- [x] Assisten Management Information (Streng of Signal, Noise Ratio, relative Water Pressure, )
 - [x] Control actors through simple user-friendly UI like button, not on JSON UI 
       (comply to requirement from Mr. Prof. Dr.-Ing. Abuosba )
-- [ ] Pre-configuration parameters should be changeable (e.g through input fields) 
+- [x] Pre-configuration parameters should be changeable (e.g through input fields) 
       (comply to suggestion from Mr. Holger Martin )
 ##### Options:
-- [ ] An UI on mobile for convenient monitoring
-- [ ] Send Notification to user for alert 
+- [x] An UI on mobile for convenient monitoring
+- [x] Send Notification to user for alert 
  <br/> <br/>
 ## For testing purpose
 #### THETHINGSNETWORK.ORG _(Legacy V2 Console)_
