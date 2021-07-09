@@ -3,33 +3,102 @@
 #include <hal/hal.h>
 #include <SPI.h>
 
-#include <Wire.h>
-//#include "SSD1306Wire.h"
+#include <ESP.h>
+
 #include <SSD1306.h> //For Oled
 //#include "SSD1306Wire.h"
 #define OLED_I2C_ADDR 0x3C
 #define OLED_RESET 16
 #define OLED_SDA 21 //4  //21,22 for pin on Lora32 Oled v2.1.6
 #define OLED_SCL 22 //15
-SSD1306 display (OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
 
-#include "DHT.h"
 
-// DHT digital pin and sensor type
-#define LEDPIN 12
-#define LEDACTOR 15
-#define DHTPIN 25
+//#define OPERATION_MODE
+int notifyError = 100;
+//only for relay multiple mode- led notification only
+#define RELAY_MODE_ON
+//#define RELAY_MODE_OFF
 
-#define DHTTYPE DHT22
-// init. DHT
-DHT dht(DHTPIN, DHTTYPE);
-float humi = 0, temC = 0, heatC = 0;
+
+#ifdef RELAY_MODE_OFF
+bool mode = LOW;
+#else
+bool mode = HIGH;
+#endif
+//For BMESensor
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+#define SEALEVELPRESSURE_HPA (1013.25)
+Adafruit_BME280 bme; // I2C
+SSD1306 display(OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
+
+//For Ultrasonic Sensor
+#include <NewPing.h>
+
+#define TRIGGER_PIN 13   //34 (Important to pay attention, that pins from 34 to 39 are not able to be output )
+#define ECHO_PIN 35      //35 (only be able to input)
+#define MAX_DISTANCE 400 // Maximum sensor distance is rated at 400-500cm.
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+
+//For Waterpressure Sensor
+#define WATER_PRESSURE_PIN 36
+//For WaterFlow Sensor
+#define WATER_FLOW_PIN 34
+
+//For Solid Moisture Sensor
+#define MOISTURE_PIN 39
+
+#define LEDPIN 3        //17
+#define ACTOR_PUMPE 15  //23 //Led Red
+#define ACTOR_VENTIL 12 //25  //Led Blue
+
+float humi = 0, temC = 0, airPress = 0, altitude = 0, adcValue = 0, waterPress = 0;
+int distanceToWaterSurface = 0, waterLeftInTank = 0; //(%) we will send waterleftIntank in % for better understanding
+const int distanceToWaterAtBottomTank = 80;          //placeholder, accuray parameter is better;
+int nextStop= 0;
+//internal controlling
+bool debugModeRq = true, manualModeRq = false, openVentilRq = false, openPumpRq = false, activeWateringRq = false;
+//moisture level to turn on watering by Pertage = 95% = 0.95*1023 = 971; WaterVolume to Off by Litre (l)
+int moistureOnPertg = 95, moistureOffPertg = 90, waterLvlOffPertg = 10, waterVolOffLit = 5; //200L, 5L only for testing
+
+int solidMoistureValue = 0, waterFlowSpeedValue = 0;
+static unsigned int waterFlowVolValue = 0;
+unsigned int *pointerWaterVol = &waterFlowVolValue;
+unsigned int flowMilliLitres;
+unsigned long totalMilliLitres;
+long currentMillis = 0, previousMillis = 0;
+int intervalCheck = 1000;
+
+float calibrationFactor = 4.5;
+
+volatile byte pulseCount;
+byte pulse1Sec = 0;
+float flowRate;
+
+TaskHandle_t Task1;
+//SemaphoreHandle_t Semaphore;
+
+void IRAM_ATTR pulseCounter()
+{
+  pulseCount++;
+}
 
 typedef struct
 {
   float temperature;
   float humidity;
-  int16_t feellike;
+  float airPressure;
+  float waterPressure;
+  int16_t waterLeft;
+  int16_t solidMoisture;
+  int16_t waterFlowSpeed;
+  int16_t waterFlowVol;
+  int16_t notifyCode;
+  boolean openVentil;
+  boolean openPump;
+  boolean manualMode;
+  
 } sensorData;
 
 #define PACKET_SIZE sizeof(sensorData)
@@ -40,52 +109,19 @@ typedef union
   byte LoRa_PacketBytes[PACKET_SIZE];
 } LoRa_Packet;
 
-LoRa_Packet myTempSensor;
+LoRa_Packet mySensors;
 char TTN_response[30];
-int commandCodeFromServer;
+int requestCodeFromServer;
 
-void TurnOnActor() { digitalWrite(LEDACTOR, HIGH); };
-inline void TurnOffActor() { digitalWrite(LEDACTOR, LOW); }
-
-
-void GetAndUpdateSensorData()
-{
-  temC = dht.readTemperature();
-  humi = dht.readHumidity();
-
-  if (isnan(humi) || isnan(temC))
-  {
-    Serial.println(F("Failed to read from DHT sensor!"));
-    return;
-  }
-  heatC = dht.computeHeatIndex(false);
-
-  //Serial.println(F("Reading sensor data"));
-  Serial.printf("Temp: %.2f °C, Humidity: %.2f %%, Feel like: %.2f °C\n", temC, humi, heatC);
-
-  myTempSensor.sensor.temperature = temC;
-  myTempSensor.sensor.humidity = humi;
-  myTempSensor.sensor.feellike = (int16_t)heatC;
-
-  digitalWrite(LEDPIN, HIGH);
-}
-
-void displayAllInforOnOled(){
-  //oled:
-  //String text4Display = "Temp: "+ String(temC)+ "°C, Humidity: "+String(humi)+"%, Feel like: "+String(heatC)+ "°C";
-  display.drawString (0, 10, String(millis()));
-  display.drawString (0, 30, "Tempetaur    "+ String(temC)+"°C");
-  display.drawString (0, 40, "Humidity        "+ String(humi)+"%");
-  display.drawString (0, 50, "Feel like         "+ String(heatC)+"°C");
-  display.display ();
-  
-}
-
+//Device 2 on Server
 // LoRaWAN NwkSKey, network session key
-static const PROGMEM u1_t NWKSKEY[16] = {0xA5, 0xEE, 0x9B, 0xC0, 0xC5, 0x2D, 0xC1, 0xC7, 0xFF, 0xF8, 0x75, 0x42, 0x4F, 0xFF, 0x73, 0x0E};
+//static const PROGMEM u1_t NWKSKEY[16] = {0xA5, 0xEE, 0x9B, 0xC0, 0xC5, 0x2D, 0xC1, 0xC7, 0xFF, 0xF8, 0x75, 0x42, 0x4F, 0xFF, 0x73, 0x0E};
+static const PROGMEM u1_t NWKSKEY[16] = {0xBF, 0x44, 0x04, 0x36, 0xB4, 0x9C, 0x5A, 0x85, 0x07, 0x5B, 0xEE, 0x33, 0xB6, 0x0A, 0x52, 0xCC};
 // LoRaWAN AppSKey, application session key
-static const u1_t PROGMEM APPSKEY[16] = {0xC1, 0x15, 0x8F, 0xCC, 0x5C, 0xEB, 0xE0, 0xB3, 0x36, 0x19, 0xD8, 0x28, 0x31, 0x7B, 0x86, 0xC7};
-static const u4_t DEVADDR = 0x260114DA;
+//static const u1_t PROGMEM APPSKEY[16] = {0xC1, 0x15, 0x8F, 0xCC, 0x5C, 0xEB, 0xE0, 0xB3, 0x36, 0x19, 0xD8, 0x28, 0x31, 0x7B, 0x86, 0xC7};
+static const u1_t PROGMEM APPSKEY[16] = {0xD4, 0xD6, 0x5D, 0xB5, 0x3C, 0xC0, 0x12, 0x75, 0xE3, 0x8E, 0x72, 0xD2, 0x90, 0x69, 0x3B, 0xD5};
+//static const u4_t DEVADDR = 0x260114DA;
+static const u4_t DEVADDR = 0x260139A5;
 
 void os_getArtEui(u1_t *buf) {}
 void os_getDevEui(u1_t *buf) {}
@@ -97,8 +133,8 @@ static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-//const unsigned TX_INTERVAL = 5;
-unsigned TX_INTERVAL = 5;
+static unsigned TX_INTERVAL = 5;
+int short_interval = 5, long_interval = 20; //1800;//30min
 // Pin mapping
 const lmic_pinmap lmic_pins = {
     .nss = 18,
@@ -107,6 +143,100 @@ const lmic_pinmap lmic_pins = {
     .dio = {26, 33, 32} // Pins for the Heltec ESP32 Lora board/ TTGO Lora32 with 3D metal antenna
 };
 
+float mapWithFloat(float x, float in_min, float in_max, float out_min, float out_max)
+{
+  const float dividend = out_max - out_min;
+  const float divisor = in_max - in_min;
+  const float delta = x - in_min;
+  if (divisor == 0)
+  {
+    log_e("Invalid map input range, min == max");
+    return -1; //AVR returns -1, SAM returns 0
+  }
+  return (delta * dividend + (divisor / 2)) / divisor + out_min;
+}
+
+void processWaterFlowSensor(void *pvParameters)
+{
+  for (;;)
+  {
+    currentMillis = millis();
+    if (currentMillis - previousMillis > intervalCheck)
+    {
+
+      pulse1Sec = pulseCount;
+      pulseCount = 0;
+      flowRate = ((1000.0 / (millis() - previousMillis)) * pulse1Sec) / calibrationFactor;
+      previousMillis = millis();
+      flowMilliLitres = (flowRate / 60) * 1000;
+      totalMilliLitres += flowMilliLitres;
+
+      waterFlowSpeedValue = (int)flowRate;
+
+      //xSemaphoreTake(Semaphore, 5);
+      waterFlowVolValue = (int16_t)totalMilliLitres / 1000;
+      //if (!finalDecision) waterFlowVolValue =0;
+      //xSemaphoreGive(Semaphore);
+    }
+
+    vTaskDelay(10);
+  }
+}
+
+void turnOnVentil()
+{ 
+  //digitalWrite(ACTOR_VENTIL, true);
+  digitalWrite(ACTOR_VENTIL,mode);
+  openVentilRq = true;
+};
+void turnOffVentil()
+{
+  //digitalWrite(ACTOR_VENTIL, false);
+  digitalWrite(ACTOR_VENTIL,!mode);
+  openVentilRq = false;
+}
+void turnOnPump()
+{
+  //Serial.println(mode);
+  digitalWrite(ACTOR_PUMPE, mode);
+  openPumpRq = true;
+};
+void turnOffPump()
+{
+  //Serial.println(mode);
+  digitalWrite(ACTOR_PUMPE, !mode);
+  openPumpRq = false;
+}
+//delay 2s to avoid dynamic water pressure detroying system
+void turnOnWatering()
+{
+  turnOnVentil();
+  delay(2000);
+  turnOnPump();
+
+  waterPress = mapWithFloat(analogRead(WATER_PRESSURE_PIN), 0, 1023, 0, 100) * 0.0689476; //Convert from PSI to Bar
+  
+}
+void turnOffWatering()
+{
+  waterFlowVolValue = 0; /*Reset Water Volume*/
+  turnOffPump();
+  delay(2000);
+  turnOffVentil();
+}
+void turnOnDebugMode()
+{
+  debugModeRq = true;
+  TX_INTERVAL = short_interval;
+  Serial.println("Set update interval time = " + String(short_interval) + "s");
+}
+void turnOffDebugMode()
+{
+  debugModeRq = false;
+  TX_INTERVAL = long_interval;
+  Serial.println("Set update interval time = " + String((float)long_interval / 60) + "min");
+}
+String boolToString(bool value) { return value ? "TRUE" : "FALSE"; }
 void HandlerDownlinksFromServer(lmic_t &lmic)
 {
   int i = 0;
@@ -120,30 +250,215 @@ void HandlerDownlinksFromServer(lmic_t &lmic)
     TTN_response[i] = lmic.frame[lmic.dataBeg + i];
 
   TTN_response[i] = 0;
-  //display.drawString (0, 32, String(TTN_response));
   char *pNext;
-  commandCodeFromServer = (int) (TTN_response);
-  commandCodeFromServer = strtol(TTN_response,&pNext,10);
-  display.drawString (0, 20,"Request code:"+String(commandCodeFromServer));
-  Serial.println(String(TTN_response));
-  // if (String(TTN_response) == "1")
-  //   TurnOnActor(); //But we can use inline fuction
-  // else
-  //   //turnOffActor();
-  //   digitalWrite(LEDACTOR, LOW);
-  switch (commandCodeFromServer){
-    case 1: TurnOnActor();break;
-    case 0: TurnOffActor();break;
-  }
+  //requestCodeFromServer = (int) (TTN_response);
+  requestCodeFromServer = strtol(TTN_response, &pNext, 10);
+  display.drawString(0, 20, "Request Code " + String(requestCodeFromServer));
+  Serial.println(String(requestCodeFromServer));
 
-  if ((int)(commandCodeFromServer/1e5)==9){
-    Serial.println("Try to set Interval"+String(commandCodeFromServer-9e5));
-    TX_INTERVAL = commandCodeFromServer-9e5;
-  }
+  //Request Code:
+  //11001: TurnOnWatering on Manual Mode
+  //10001: TurnOffWatering on Manual Mode
+  //210xx: Moisture level to active watering from above xx% on Auto Mode
+  //200xx: Moisture level to turn off watering from below xx% and below on Auto Mode
+  //300xx: Water level to turn off watering from below xx% on Auto Mode
+  //40xxx: Water Volume to turn off watering from above xxx% automatically
+  //81001: Turn on Manual Mode
+  //80001: Turn off Manual Mode (change to AutoMode)
+  //91001: Turn on Debug Mode (TX_INTERVAL will be shorter): actually 9s update change on Server
+  //90001: Turn off Debug Mode (TX_INTERVAL will be longer): 30min to update to Server
 
-  Serial.println("TX_INTERVAL = "+String(TX_INTERVAL));
+  switch (requestCodeFromServer)
+  {
+  case 11001:
+    if (manualModeRq)
+      turnOnWatering();
+    break; //31 31 30 30 31 in Hexa
+  case 10001:
+    if (manualModeRq)
+      turnOffWatering();
+    break; //31 30 30 30 31
+  case 81001:
+    manualModeRq = true;
+    break; //38 31 30 30 31
+  case 80001:
+    manualModeRq = false;
+    break;
+  case 91001:
+    turnOnDebugMode();
+    break;
+  case 90001:
+    turnOffDebugMode();
+    break;
+  //case 99999: Serial.println("System will reboot in 10s"); ESP32.restart();break;
+  default:
+    if (requestCodeFromServer >= 21000 && requestCodeFromServer <= 21100)
+    {
+      moistureOnPertg = requestCodeFromServer == 21100 ? 100 : requestCodeFromServer % 100;
+      Serial.println("Set Moisture On Pertage: " + String(moistureOnPertg) + "%");
+    }
+    if (requestCodeFromServer >= 20000 && requestCodeFromServer <= 20100)
+    {
+      moistureOffPertg = requestCodeFromServer == 20100 ? 100 : requestCodeFromServer % 100;
+      Serial.println("Set Moisture Off Pertage: " + String(moistureOffPertg) + "%");
+    }
+    if (requestCodeFromServer >= 30000 && requestCodeFromServer <= 30100)
+    {
+      waterLvlOffPertg = requestCodeFromServer == 30100 ? 100 : requestCodeFromServer % 100;
+      Serial.println("Set Water level Off Pertage: " + String(waterLvlOffPertg) + "%");
+    }
+    if (requestCodeFromServer >= 40000 && requestCodeFromServer <= 40200)
+    {
+      waterVolOffLit = requestCodeFromServer == 40200 ? 200 : requestCodeFromServer % 200;
+      Serial.println("Set Water flow Volume Off Listre: " + String(waterVolOffLit) + "L");
+    }
+  }
 }
 
+int errorChecking(){
+  if (openVentilRq && openPumpRq && waterFlowSpeedValue< 1){
+    //This is only simulation testing.
+    //Because these below values need to be suitable to pratical operation
+    //These values might need to be changed
+      if (waterPress>5.5){
+        Serial.println("Got stuck!!! May be ventil defect or stuck in Hose");
+        return 101;
+      }
+      if (waterPress< 1.3){
+        Serial.println("Pump defect");
+        return 102;
+      }
+      return 100;}
+  return 100; 
+}
+
+inline void GetAndUpdateSensorData()
+{
+  temC = bme.readTemperature() - 1.5; //calibration
+  humi = bme.readHumidity();
+
+  if (isnan(humi) || isnan(temC))
+  {
+    Serial.println(F("Failed to read from bme sensor!"));
+    return;
+  }
+  airPress = bme.readPressure() / 100.0F;
+  altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+
+  //Ultrasonic sensor:
+  distanceToWaterSurface = (int)sonar.ping_cm();
+  Serial.println("actually mesuared distance " + String(distanceToWaterSurface));
+  //Remove outliner of Value
+  distanceToWaterSurface = distanceToWaterSurface > distanceToWaterAtBottomTank ? distanceToWaterAtBottomTank : distanceToWaterSurface;
+  Serial.println("distance after fix " + String(distanceToWaterSurface));
+  //water lef in tank wird be calculated in percentage
+  waterLeftInTank = (float)(distanceToWaterAtBottomTank - distanceToWaterSurface) / distanceToWaterAtBottomTank * 100;
+  //Serial.println(F("Reading sensor data"));
+  Serial.printf("Temp: %.2f °C, Humidity: %.2f %%, Air Pressure: %.2f hPa, Altitude: %.2f m\n", temC, humi, waterPress, altitude);
+  Serial.println("Water Level: " + String(waterLeftInTank) + " %");
+
+  //Get Waterpressure Data:
+  adcValue = analogRead(WATER_PRESSURE_PIN);
+  //Serial.println("Adc value "+ String(adcValue));
+  waterPress = mapWithFloat(adcValue, 0, 1023, 0, 100) * 0.0689476; //Convert from PSI to Bar
+  Serial.println("Water Pressure: " + String(waterPress) + " Bar");
+
+  //Get Waterflow data
+
+  //Get Solid Moisture data
+  solidMoistureValue = (float)analogRead(MOISTURE_PIN) / 1023 * 100;
+  if (isnan(solidMoistureValue))
+  {
+    Serial.println(F("Failed to read Solid Moisture value from Sensor!"));
+    return;
+  }
+
+  Serial.println("Moisture Value: " + String(solidMoistureValue) + "% - Flow rate: " + String(int(waterFlowSpeedValue)) + "L/min \t Total Liquid Quantity: " + String(waterFlowVolValue) + "L\n");
+
+  #ifdef OPERATION_MODE
+  notifyError = errorChecking();
+  #endif
+  //Packing data to send
+  mySensors.sensor.temperature = temC;
+  mySensors.sensor.humidity = humi;
+  mySensors.sensor.airPressure = airPress / 1000;
+  mySensors.sensor.waterPressure = waterPress;
+  mySensors.sensor.waterLeft = waterLeftInTank;
+  mySensors.sensor.solidMoisture = solidMoistureValue;
+  mySensors.sensor.waterFlowSpeed = waterFlowSpeedValue;
+  mySensors.sensor.waterFlowVol = waterFlowVolValue;
+  mySensors.sensor.notifyCode = (int16_t)notifyError;
+  mySensors.sensor.openVentil = openVentilRq;
+  mySensors.sensor.openPump = openPumpRq;
+  mySensors.sensor.manualMode = manualModeRq;
+
+
+  digitalWrite(LEDPIN, HIGH);
+}
+
+void operateSystemAutomatically()
+{
+  if (manualModeRq)
+    return;
+
+  // if (solidMoistureValue>(float)moistureOnPertg/100*1023){
+  //   turnOnWatering();
+  // }
+  // if (solidMoistureValue<(float)moistureOffPertg/100*1023){
+  //   turnOffWatering();
+  // }
+
+  bool moistureOn, moistureOff, waterLvlOff, waterVolOff, finalDecision;
+  moistureOn = solidMoistureValue > moistureOnPertg;
+  moistureOff = solidMoistureValue < moistureOffPertg;
+  waterLvlOff = waterLeftInTank < waterLvlOffPertg;
+  waterVolOff = waterFlowVolValue > waterVolOffLit;
+  //waterVolOff = waterFlowVolValue > nextStop;
+  Serial.println("Condition check:\nPass Check Moisture On: " + boolToString(moistureOn) + "\nPass Check Moisture Off: " + boolToString(!moistureOff) +
+                 "\nPass Check Waterlevel Off: " + boolToString(!waterLvlOff) + "\nPass Check WaterVolume Off: " + boolToString(!waterVolOff));
+  finalDecision = moistureOn && !moistureOff && !waterLvlOff && !waterVolOff;
+
+  Serial.println("Final Decision - Turn On Watering: " + boolToString(finalDecision) + "\n\n");
+  if (finalDecision)
+  {
+    //TaskHandle_t Task1;
+    //xTaskCreatePinnedToCore(processWaterFlowSensor, "Task1", 5000, NULL, 1, &Task1, 0);
+    //xTaskCreate(processWaterFlowSensor, "Task1", 10000, NULL, 1, &Task1);
+
+    delay(500);
+    turnOnWatering();
+  }
+  else
+  {
+    turnOffWatering();
+    if (waterFlowVolValue > 0)
+      ESP.restart();
+
+    //xSemaphoreTake(Semaphore, 5);
+    //waterFlowVolValue=0;
+    //Serial.println("RELEASE WATER FLOW VOL NOW"+String(waterFlowVolValue));
+    //xSemaphoreGive(Semaphore);
+
+    // if (waterFlowVolValue > 0 && Task1 != NULL)
+    // {
+    //   vTaskDelete(Task1);
+    // };
+  }
+}
+
+void displayAllInforOnOled()
+{
+  //oled:
+  display.drawString(0, 10, String(millis()));
+  display.drawString(0, 30, "Te " + String(temC) + "°C");
+  display.drawString(70, 30, "Hu " + String(humi) + "%");
+  display.drawString(0, 40, "A.P " + String(airPress / 1000) + "Bar");
+  display.drawString(70, 40, "W.P " + String(waterPress) + "Bar");
+  display.drawString(0, 50, "W.L " + String(waterLeftInTank) + "%");
+  display.drawString(45, 50, "M " + String(solidMoistureValue) + "%");
+  display.drawString(75, 50, " W.Vl  " + String(waterFlowVolValue) + "L");
+  display.display();
+}
 
 void do_send(osjob_t *j)
 {
@@ -156,13 +471,16 @@ void do_send(osjob_t *j)
   {
     // read the temperature from the DHT22
     GetAndUpdateSensorData();
-    
+    operateSystemAutomatically();
 
     //sendata //Port 3 for actual binding, Port 4 for showing only
-    //Connect to UI(Opensensemap and Node-red)
-    LMIC_setTxData2(3, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
-    //Connect only to TTN
-    //LMIC_setTxData2(4, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
+    //LMIC_setTxData2(3, myTempSensor.LoRa_PacketBytes, sizeof(myTempSensor.LoRa_PacketBytes) - 3, 0);
+    //LMIC_setTxData2(10, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes)-3, 0);  }
+    //LMIC_setTxData2(15, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
+    LMIC_setTxData2(16, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
+    
+    //LMIC_setTxData2(19, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
+    //LMIC_setTxData2(20, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
   }
   // Next TX is scheduled after TX_COMPLETE event.
 }
@@ -198,15 +516,16 @@ void onEvent(ev_t ev)
     Serial.println(F("EV_REJOIN_FAILED"));
     break;
   case EV_TXCOMPLETE:
-    //oled
+    //Oled
     display.clear();
-    display.drawString (0, 0, "EV_TXCOMPLETE event!");
+    display.drawString(0, 0, "EV_TXCOMPLETE event!");
+
     Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
     if (LMIC.txrxFlags & TXRX_ACK)
       Serial.println(F("Received ack"));
     if (LMIC.dataLen)
     {
-      Serial.println("Received "+String(LMIC.dataLen)+" bytes of payload");
+      Serial.println("Received " + String(LMIC.dataLen) + " bytes of payload");
       HandlerDownlinksFromServer(LMIC);
     }
     // Schedule next transmission
@@ -214,7 +533,6 @@ void onEvent(ev_t ev)
     //Turn led:
     digitalWrite(LEDPIN, LOW);
     displayAllInforOnOled();
-
     break;
   case EV_LOST_TSYNC:
     Serial.println(F("EV_LOST_TSYNC"));
@@ -253,7 +571,7 @@ void onEvent(ev_t ev)
 
 void setup()
 {
-  delay(1000);
+  delay(1500);
   while (!Serial)
     ;
   Serial.begin(9600);
@@ -261,22 +579,59 @@ void setup()
   Serial.println(F("Starting"));
 
   //set Led and start dht sensor:
-  dht.begin();
+  if (!bme.begin(0x76))
+  {
+    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    while (1)
+      delay(10);
+  }
   pinMode(LEDPIN, OUTPUT);
-  pinMode(LEDACTOR, OUTPUT);
-  
-  pinMode(22,OUTPUT);
-  digitalWrite(22,LOW);
+  pinMode(ACTOR_VENTIL, OUTPUT);
+  pinMode(ACTOR_PUMPE, OUTPUT);
+  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(WATER_FLOW_PIN, INPUT_PULLUP);
+  pinMode(MOISTURE_PIN, INPUT);
+  //use default same SDA,SCL of I2C Pins for BME Sensor
 
-  display.init ();
-  display.flipScreenVertically ();
-  display.setFont (ArialMT_Plain_10);
+  analogReadResolution(10); // Default of 12 is not very linear. Recommended to use 10 or 11 depending on needed resolution.
+  analogSetAttenuation(ADC_6db);
 
-  display.setTextAlignment (TEXT_ALIGN_LEFT);
+  pulseCount = 0;
+  flowRate = 0.0;
+  flowMilliLitres = 0;
+  totalMilliLitres = 0;
+  previousMillis = 0;
 
-  display.drawString (0, 0, "Init!");
-  display.display ();  
+  //Semaphore = xSemaphoreCreateMutex();
+  //Semaphore = xSemaphoreCreateBinary();
 
+  attachInterrupt(digitalPinToInterrupt(WATER_FLOW_PIN), pulseCounter, FALLING);
+
+  xTaskCreatePinnedToCore(
+      processWaterFlowSensor, /* Task function. */
+      "Task1",                /* name of task. */
+      5000,                   /* Stack size of task */
+      NULL,                   /* parameter of the task */
+      1,                      /* priority of the task */
+      &Task1,                 /* Task handle to keep track of created task */
+      0);                     /* pin task to core 0 */
+  delay(500);
+
+  // reset the OLED
+  pinMode(OLED_RESET, OUTPUT);
+  digitalWrite(OLED_RESET, LOW);
+  delay(50);
+  digitalWrite(OLED_RESET, HIGH);
+
+  display.init();
+  display.flipScreenVertically();
+  display.setFont(ArialMT_Plain_10);
+
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+  display.drawString(0, 0, "Init!");
+  display.display();
 
   // LMIC init
   os_init();
@@ -322,5 +677,5 @@ void setup()
 void loop()
 {
   os_runloop_once();
+  //Serial.println("Bla bla");
 }
-
