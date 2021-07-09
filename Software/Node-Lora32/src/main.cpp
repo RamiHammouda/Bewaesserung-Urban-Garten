@@ -77,7 +77,6 @@ byte pulse1Sec = 0;
 float flowRate;
 
 TaskHandle_t Task1;
-//SemaphoreHandle_t Semaphore;
 
 void IRAM_ATTR pulseCounter()
 {
@@ -115,12 +114,9 @@ int requestCodeFromServer;
 
 //Device 2 on Server
 // LoRaWAN NwkSKey, network session key
-//static const PROGMEM u1_t NWKSKEY[16] = {0xA5, 0xEE, 0x9B, 0xC0, 0xC5, 0x2D, 0xC1, 0xC7, 0xFF, 0xF8, 0x75, 0x42, 0x4F, 0xFF, 0x73, 0x0E};
 static const PROGMEM u1_t NWKSKEY[16] = {0xBF, 0x44, 0x04, 0x36, 0xB4, 0x9C, 0x5A, 0x85, 0x07, 0x5B, 0xEE, 0x33, 0xB6, 0x0A, 0x52, 0xCC};
 // LoRaWAN AppSKey, application session key
-//static const u1_t PROGMEM APPSKEY[16] = {0xC1, 0x15, 0x8F, 0xCC, 0x5C, 0xEB, 0xE0, 0xB3, 0x36, 0x19, 0xD8, 0x28, 0x31, 0x7B, 0x86, 0xC7};
 static const u1_t PROGMEM APPSKEY[16] = {0xD4, 0xD6, 0x5D, 0xB5, 0x3C, 0xC0, 0x12, 0x75, 0xE3, 0x8E, 0x72, 0xD2, 0x90, 0x69, 0x3B, 0xD5};
-//static const u4_t DEVADDR = 0x260114DA;
 static const u4_t DEVADDR = 0x260139A5;
 
 void os_getArtEui(u1_t *buf) {}
@@ -172,11 +168,7 @@ void processWaterFlowSensor(void *pvParameters)
       totalMilliLitres += flowMilliLitres;
 
       waterFlowSpeedValue = (int)flowRate;
-
-      //xSemaphoreTake(Semaphore, 5);
       waterFlowVolValue = (int16_t)totalMilliLitres / 1000;
-      //if (!finalDecision) waterFlowVolValue =0;
-      //xSemaphoreGive(Semaphore);
     }
 
     vTaskDelay(10);
@@ -197,13 +189,11 @@ void turnOffVentil()
 }
 void turnOnPump()
 {
-  //Serial.println(mode);
   digitalWrite(ACTOR_PUMPE, mode);
   openPumpRq = true;
 };
 void turnOffPump()
 {
-  //Serial.println(mode);
   digitalWrite(ACTOR_PUMPE, !mode);
   openPumpRq = false;
 }
@@ -353,13 +343,11 @@ inline void GetAndUpdateSensorData()
   Serial.println("distance after fix " + String(distanceToWaterSurface));
   //water lef in tank wird be calculated in percentage
   waterLeftInTank = (float)(distanceToWaterAtBottomTank - distanceToWaterSurface) / distanceToWaterAtBottomTank * 100;
-  //Serial.println(F("Reading sensor data"));
   Serial.printf("Temp: %.2f °C, Humidity: %.2f %%, Air Pressure: %.2f hPa, Altitude: %.2f m\n", temC, humi, waterPress, altitude);
   Serial.println("Water Level: " + String(waterLeftInTank) + " %");
 
   //Get Waterpressure Data:
   adcValue = analogRead(WATER_PRESSURE_PIN);
-  //Serial.println("Adc value "+ String(adcValue));
   waterPress = mapWithFloat(adcValue, 0, 1023, 0, 100) * 0.0689476; //Convert from PSI to Bar
   Serial.println("Water Pressure: " + String(waterPress) + " Bar");
 
@@ -401,19 +389,12 @@ void operateSystemAutomatically()
   if (manualModeRq)
     return;
 
-  // if (solidMoistureValue>(float)moistureOnPertg/100*1023){
-  //   turnOnWatering();
-  // }
-  // if (solidMoistureValue<(float)moistureOffPertg/100*1023){
-  //   turnOffWatering();
-  // }
-
   bool moistureOn, moistureOff, waterLvlOff, waterVolOff, finalDecision;
   moistureOn = solidMoistureValue > moistureOnPertg;
   moistureOff = solidMoistureValue < moistureOffPertg;
   waterLvlOff = waterLeftInTank < waterLvlOffPertg;
   waterVolOff = waterFlowVolValue > waterVolOffLit;
-  //waterVolOff = waterFlowVolValue > nextStop;
+
   Serial.println("Condition check:\nPass Check Moisture On: " + boolToString(moistureOn) + "\nPass Check Moisture Off: " + boolToString(!moistureOff) +
                  "\nPass Check Waterlevel Off: " + boolToString(!waterLvlOff) + "\nPass Check WaterVolume Off: " + boolToString(!waterVolOff));
   finalDecision = moistureOn && !moistureOff && !waterLvlOff && !waterVolOff;
@@ -421,10 +402,6 @@ void operateSystemAutomatically()
   Serial.println("Final Decision - Turn On Watering: " + boolToString(finalDecision) + "\n\n");
   if (finalDecision)
   {
-    //TaskHandle_t Task1;
-    //xTaskCreatePinnedToCore(processWaterFlowSensor, "Task1", 5000, NULL, 1, &Task1, 0);
-    //xTaskCreate(processWaterFlowSensor, "Task1", 10000, NULL, 1, &Task1);
-
     delay(500);
     turnOnWatering();
   }
@@ -433,16 +410,6 @@ void operateSystemAutomatically()
     turnOffWatering();
     if (waterFlowVolValue > 0)
       ESP.restart();
-
-    //xSemaphoreTake(Semaphore, 5);
-    //waterFlowVolValue=0;
-    //Serial.println("RELEASE WATER FLOW VOL NOW"+String(waterFlowVolValue));
-    //xSemaphoreGive(Semaphore);
-
-    // if (waterFlowVolValue > 0 && Task1 != NULL)
-    // {
-    //   vTaskDelete(Task1);
-    // };
   }
 }
 
@@ -469,7 +436,7 @@ void do_send(osjob_t *j)
   }
   else
   {
-    // read the temperature from the DHT22
+    // read the sensorvalue
     GetAndUpdateSensorData();
     operateSystemAutomatically();
 
@@ -478,7 +445,6 @@ void do_send(osjob_t *j)
     //LMIC_setTxData2(10, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes)-3, 0);  }
     //LMIC_setTxData2(15, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
     LMIC_setTxData2(16, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
-    
     //LMIC_setTxData2(19, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
     //LMIC_setTxData2(20, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
   }
@@ -578,7 +544,7 @@ void setup()
   delay(100);
   Serial.println(F("Starting"));
 
-  //set Led and start dht sensor:
+  //start bme sensor:
   if (!bme.begin(0x76))
   {
     Serial.println("Could not find a valid BME280 sensor, check wiring!");
@@ -602,9 +568,6 @@ void setup()
   flowMilliLitres = 0;
   totalMilliLitres = 0;
   previousMillis = 0;
-
-  //Semaphore = xSemaphoreCreateMutex();
-  //Semaphore = xSemaphoreCreateBinary();
 
   attachInterrupt(digitalPinToInterrupt(WATER_FLOW_PIN), pulseCounter, FALLING);
 
@@ -677,5 +640,4 @@ void setup()
 void loop()
 {
   os_runloop_once();
-  //Serial.println("Bla bla");
 }
