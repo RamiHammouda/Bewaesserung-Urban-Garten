@@ -152,7 +152,7 @@ static osjob_t sendjob;
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
 static unsigned TX_INTERVAL = 5;
-int short_interval = 5, long_interval = 20; //1800;//30min
+int short_interval = 5, long_interval = 58; //60s
 // Pin mapping
 const lmic_pinmap lmic_pins = {
     .nss = 18,
@@ -271,6 +271,10 @@ void HandlerDownlinksFromServer(lmic_t &lmic)
   //200xx: Moisture level to turn off watering from below xx% and below on Auto Mode
   //300xx: Water level to turn off watering from below xx% on Auto Mode
   //40xxx: Water Volume to turn off watering from above xxx% automatically
+  //71001: Turn on Pumpe (for testing only)
+  //70001: Turn off Pumpe (for testing only)
+  //71002: Turn on Ventils (for testing only)
+  //70002: Turn off Ventils (for testing only)
   //81001: Turn on Manual Mode
   //80001: Turn off Manual Mode (change to AutoMode)
   //91001: Turn on Debug Mode (TX_INTERVAL will be shorter): actually 9s update change on Server
@@ -286,12 +290,24 @@ void HandlerDownlinksFromServer(lmic_t &lmic)
     if (manualModeRq)
       turnOffWatering();
     break; //31 30 30 30 31
+  case 71001:
+    turnOnPump();
+    break; //37 31 30 30 31
+  case 70001:
+    turnOffPump();
+    break; //37 30 30 30 31
+  case 71002:
+    turnOnVentil();
+    break; //37 31 30 30 32
+  case 70002:
+    turnOffVentil();
+    break; //37 30 30 30 32
   case 81001:
     manualModeRq = true;
     break; //38 31 30 30 31
   case 80001:
     manualModeRq = false;
-    break;
+    break;//38 30 30 30 31
   case 91001:
     turnOnDebugMode();
     break;
