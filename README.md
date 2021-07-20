@@ -7,6 +7,8 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 <br/> <br/>
 # Screenshot
 
+<img src="https://i.ibb.co/7z0fqQ0/FULL-Image-2.png" width="550" title = "screenshot"> <img src="https://i.ibb.co/82QXB2x/FULL-Image-3.png" width="550" title = "UI Program">
+
 
   
 # Usage
@@ -24,7 +26,8 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - MCCI LoraWAN LMIC Library v4.4
 - Adafruit Unified Sensor v1.1.4
 - Adafruit BME280 v2.1.4
-- Thingpulse/ESP8266 and ESP32 OLED driver for SSD1306 displays v4.2.0
+- Thingpulse/ESP8266 and ESP32 OLED driver for SSD1306 displays v4.2.0 (platformio lib install 2978)
+- ~~NewPing v1.9.1~~ (replaced with our own implemented class)
 #### Protocol:
 - MQTT, HTTP
 #### Connectivity Protocol:
@@ -42,7 +45,7 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - node-red-dashboard (base)
 - node-red-contrib-ui-led (led only)
 - node-red-contrib-telegrambot (connect to telegram bot API)
-- node-red-contrib-remote (remove system on Mobile)
+- node-red-contrib-remote (remote system on Mobile)
 #### Hardware Programming: 
 - C++
 #### Hardware:
@@ -84,7 +87,7 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - [x] Simple sensor data are visualizated by opensensemap
 - [x] Complex sensor data will be visualizated by a self development UI
 ##### UI Development:
-- [x] Create a UI to get all current information of system ( Temperatur, Humidity, Moisture Value, Air Pressure, Water Pressure, Waterflow Speed, Waterflow Volume, current status of Ventil, current status of Pump, current Update Tempo, current operation status of system)
+- [x] Create an UI to get all current information of system ( Temperatur, Humidity, Moisture Value, Air Pressure, Water Pressure, Waterflow Speed, Waterflow Volume, current status of Ventil, current status of Pump, current Update Tempo, current operation status of system)
 - [x] Assisten Management Information (Streng of Signal, Noise Ratio, relative Water Pressure, Curent Operation Mode )
 - [x] Control actors through simple user-friendly UI like button, not on JSON UI 
       (comply to requirement from Mr. Prof. Dr.-Ing. Abuosba )
@@ -93,6 +96,7 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 ##### Options:
 - [x] An UI on mobile for convenient monitoring
 - [x] Send Notification to user for alert and notify current status automatically through Telegram with Bot "HTWGarden". (Only Admin received alert)
+- [x] Create wrapper classes for multiple sensors/actors (for an easy scalability)
  <br/> <br/>
 ## For testing purpose
 #### THETHINGSNETWORK.ORG _(Legacy V2 Console)_
@@ -117,4 +121,4 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 - **Token: _1565148953:AAHQ8Jx3c4r1mIf3uV5PS_4BW0aKDrDjfuM_**
  <br/> <br/>
 # License
-**MIT** © **HTW Berlin - IngenieurInformatik SS21** - ***Team 4:*** **Khac Hoa Le, Rami Hammouda, Jaro Machnow**
+**MIT** © **HTW Berlin - IngenieurInformatik SS21** - **Team 4 - Khac Hoa Le, Rami Hammouda, Jaro Machnow**
