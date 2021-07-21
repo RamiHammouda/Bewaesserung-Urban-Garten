@@ -355,9 +355,19 @@ int errorChecking(){
       return 100;}
   return 100; 
 }
+//Error Handler function
+//It checks error Code, current status and give a corresponding handle
+void errorHandler(){
+  Serial.println("System Error checking");
+  if (errorChecking()==100)
+    return;
+  Serial.println("Defect detected, All Actors must be shutdowned now");
+  myActorSet.turnOffAllActors();
+  manualModeRq = true;
+}
 //With old version of LMIC Library we can only add inline function into provided function of LMIC
 //With new version of LMIC now we can add normal functions
-//And now functions in main loop can also work well (but need to pay attention to avoid conflict between function in main loop vs scheduled transmission)
+//And now functions in main loop can also work well (but need to pay attention to avoid conflict between function in main loop vs scheduled transmission or block transsmisstion)
 inline void GetAndUpdateSensorData()
 {
   temC = bme.readTemperature() - 1.5; //calibration
@@ -401,6 +411,7 @@ inline void GetAndUpdateSensorData()
   #ifdef OPERATION_MODE
   notifyError = errorChecking();
   #endif
+
   //Packing data to send
   mySensors.sensor.temperature = temC;
   mySensors.sensor.humidity = humi;
@@ -424,7 +435,7 @@ inline void GetAndUpdateSensorData()
  */
 void operateSystemAutomatically()
 {
-  if (manualModeRq)
+  if (manualModeRq || (errorChecking()!=100))
     return;
 
   bool moistureOn, moistureOff, waterLvlOff, waterVolOff, finalDecision;
@@ -477,6 +488,7 @@ void do_send(osjob_t *j)
     // read the sensorvalue
     GetAndUpdateSensorData();
     operateSystemAutomatically();
+    errorHandler();
 
     LMIC_setTxData2(16, mySensors.LoRa_PacketBytes, sizeof(mySensors.LoRa_PacketBytes), 0);
   }
@@ -681,5 +693,5 @@ void setup()
 void loop()
 {
   os_runloop_once();
-
+  
 }
