@@ -27,7 +27,7 @@ MoistureSensor moistureSS;
 //boolean option ist for led-demonstration only, when we connect to Inverted relay
 //default true: inverted relay is connected
 //false: inverted relay ist not connected
-Actor myPump(false), myVentil(false);
+Actor myPump(true), myVentil(true);
 ActorGroup myActorSet;
 
 //Define to check error of pump and ventil while operating
@@ -74,7 +74,7 @@ SSD1306 display(OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
 float humi = 0, temC = 0, airPress = 0, altitude = 0, adcValue = 0, waterPress = 0;
 int distanceToWaterSurface = 0, waterLeftInTank = 0; //(%) we will send waterleftIntank in % for better understanding
 const int distanceToWaterAtBottomTank = 80;          //placeholder, accuray parameter is better;
-int nextStop = 0;
+
 //internal controlling
 bool debugModeRq = true, manualModeRq = false, openVentilRq = false, openPumpRq = false, activeWateringRq = false;
 //moisture level to turn on watering by Pertage = 95% = 0.95*1023 = 971; WaterVolume to Off by Litre (l)
@@ -377,7 +377,8 @@ void errorHandler()
   if (errorChecking() == 100)
     return;
   Serial.println("Defect detected, All Actors must be shutdowned now");
-  myActorSet.turnOffAllActors();
+  //myActorSet.turnOffAllActors();
+  turnOffWatering();
   manualModeRq = true;
 }
 //With old version of LMIC Library we can only add inline function into provided function of LMIC
