@@ -1,6 +1,6 @@
 //Use Arduino framework on PlatformIO
 #include <Arduino.h>
-//For Lorawan 
+//For Lorawan
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
@@ -13,7 +13,6 @@
 #define OLED_RESET 16
 #define OLED_SDA 21 //4  //21,22 for pin on Lora32 Oled v2.1.6
 #define OLED_SCL 22 //15
-
 
 //Created Class for wrapping sensor/actor
 #include "UltrasonicSensor.h"
@@ -28,7 +27,7 @@ MoistureSensor moistureSS;
 //boolean option ist for led-demonstration only, when we connect to Inverted relay
 //default true: inverted relay is connected
 //false: inverted relay ist not connected
-Actor myPump(false),myVentil(false);
+Actor myPump(false), myVentil(false);
 ActorGroup myActorSet;
 
 //Define to check error of pump and ventil while operating
@@ -43,7 +42,6 @@ bool mode = LOW;
 #else
 bool mode = HIGH;
 #endif
-
 
 //For BMESensor
 #include <Wire.h>
@@ -61,7 +59,6 @@ SSD1306 display(OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
 #define MAX_DISTANCE 400 // Maximum sensor distance is rated at 400-500cm.
 //NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 
-
 //For Waterpressure Sensor
 #define WATER_PRESSURE_PIN 36
 //For WaterFlow Sensor
@@ -77,11 +74,11 @@ SSD1306 display(OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
 float humi = 0, temC = 0, airPress = 0, altitude = 0, adcValue = 0, waterPress = 0;
 int distanceToWaterSurface = 0, waterLeftInTank = 0; //(%) we will send waterleftIntank in % for better understanding
 const int distanceToWaterAtBottomTank = 80;          //placeholder, accuray parameter is better;
-int nextStop= 0;
+int nextStop = 0;
 //internal controlling
 bool debugModeRq = true, manualModeRq = false, openVentilRq = false, openPumpRq = false, activeWateringRq = false;
 //moisture level to turn on watering by Pertage = 95% = 0.95*1023 = 971; WaterVolume to Off by Litre (l)
-int moistureOnPertg = 95, moistureOffPertg = 90, waterLvlOffPertg = 10, waterVolOffLit = 10 ; //200L, 10L only for testing
+int moistureOnPertg = 95, moistureOffPertg = 90, waterLvlOffPertg = 10, waterVolOffLit = 10; //200L, 10L only for testing
 
 //variable for Waterflowsensor
 int soilMoistureValue = 0, waterFlowSpeedValue = 0;
@@ -119,7 +116,7 @@ typedef struct
   boolean openVentil;
   boolean openPump;
   boolean manualMode;
-  
+
 } sensorData;
 
 #define PACKET_SIZE sizeof(sensorData)
@@ -192,7 +189,7 @@ void processWaterFlowSensor(void *pvParameters)
       totalMilliLitres += flowMilliLitres;
 
       waterFlowSpeedValue = (int)flowRate;
-      waterFlowVolValue = totalMilliLitres/1000;
+      waterFlowVolValue = totalMilliLitres / 1000;
     }
 
     vTaskDelay(5);
@@ -200,7 +197,7 @@ void processWaterFlowSensor(void *pvParameters)
 }
 
 void turnOnVentil()
-{ 
+{
   myActorSet.turnOnPassiveActors();
   openVentilRq = true;
 };
@@ -243,6 +240,16 @@ void turnOffDebugMode()
   debugModeRq = false;
   TX_INTERVAL = long_interval;
   Serial.println("Set update interval time = " + String((float)long_interval / 60) + "min");
+}
+void rebootSystem(int rebootTime = 5)
+{
+  for (int i = rebootTime; i >= 0; --i)
+  {
+    Serial.println("System will be reboot in " + String(i) + " s");
+    delay(1000);
+  }
+  Serial.println("Rebooting...");
+  ESP.restart();
 }
 String boolToString(bool value) { return value ? "TRUE" : "FALSE"; }
 void HandlerDownlinksFromServer(lmic_t &lmic)
@@ -307,14 +314,16 @@ void HandlerDownlinksFromServer(lmic_t &lmic)
     break; //38 31 30 30 31
   case 80001:
     manualModeRq = false;
-    break;//38 30 30 30 31
+    break; //38 30 30 30 31
   case 91001:
     turnOnDebugMode();
     break;
   case 90001:
     turnOffDebugMode();
     break;
-  //case 99999: Serial.println("System will reboot in 10s"); delay(10000);ESP.restart();break;
+  case 99999:
+    rebootSystem();
+    break; //39 39 39 39 39
   default:
     if (requestCodeFromServer >= 21000 && requestCodeFromServer <= 21100)
     {
@@ -339,27 +348,33 @@ void HandlerDownlinksFromServer(lmic_t &lmic)
   }
 }
 
-int errorChecking(){
-  if (openVentilRq && openPumpRq && waterFlowSpeedValue< 1){
+int errorChecking()
+{
+  if (openVentilRq && openPumpRq && waterFlowSpeedValue < 1)
+  {
     //This is only simulation testing.
     //Because these below values need to be suitable to pratical operation
     //These values might need to be changed
-      if (waterPress>5.5){
-        Serial.println("Got stuck!!! May be ventil defect or stuck in Hose");
-        return 101;
-      }
-      if (waterPress< 1.3){
-        Serial.println("Pump defect");
-        return 102;
-      }
-      return 100;}
-  return 100; 
+    if (waterPress > 5.5)
+    {
+      Serial.println("Got stuck!!! May be ventil defect or stuck in Hose");
+      return 101;
+    }
+    if (waterPress < 1.02)
+    {
+      Serial.println("Pump defect");
+      return 102;
+    }
+    return 100;
+  }
+  return 100;
 }
 //Error Handler function
 //It checks error Code, current status and give a corresponding handle
-void errorHandler(){
+void errorHandler()
+{
   Serial.println("System Error checking");
-  if (errorChecking()==100)
+  if (errorChecking() == 100)
     return;
   Serial.println("Defect detected, All Actors must be shutdowned now");
   myActorSet.turnOffAllActors();
@@ -399,7 +414,7 @@ inline void GetAndUpdateSensorData()
   //Get Waterflow data
 
   //Get soil Moisture data
-  soilMoistureValue = (float) moistureSS.getMoisture_percent();
+  soilMoistureValue = (float)moistureSS.getMoisture_percent();
   if (isnan(soilMoistureValue))
   {
     Serial.println(F("Failed to read soil Moisture value from Sensor!"));
@@ -408,9 +423,9 @@ inline void GetAndUpdateSensorData()
 
   Serial.println("Moisture Value: " + String(soilMoistureValue) + "% - Flow rate: " + String(int(waterFlowSpeedValue)) + "L/min \t Total Liquid Quantity: " + String(waterFlowVolValue) + "L\n");
 
-  #ifdef OPERATION_MODE
+#ifdef OPERATION_MODE
   notifyError = errorChecking();
-  #endif
+#endif
 
   //Packing data to send
   mySensors.sensor.temperature = temC;
@@ -426,7 +441,6 @@ inline void GetAndUpdateSensorData()
   mySensors.sensor.openPump = openPumpRq;
   mySensors.sensor.manualMode = manualModeRq;
 
-
   digitalWrite(LEDPIN, HIGH);
 }
 
@@ -435,7 +449,7 @@ inline void GetAndUpdateSensorData()
  */
 void operateSystemAutomatically()
 {
-  if (manualModeRq || (errorChecking()!=100))
+  if (manualModeRq || (errorChecking() != 100))
     return;
 
   bool moistureOn, moistureOff, waterLvlOff, waterVolOff, finalDecision;
@@ -457,8 +471,8 @@ void operateSystemAutomatically()
   else
   {
     turnOffWatering();
-      //if (waterFlowVolValue > 0)
-      //ESP.restart();
+    //if (waterFlowVolValue > 0)
+    //ESP.restart();
   }
 }
 
@@ -605,7 +619,7 @@ void setup()
   //use default same SDA,SCL of I2C Pins for BME Sensor
 
   //Custom classes:
-  ultrasonicSS.set_trig_echo(TRIGGER_PIN,ECHO_PIN);
+  ultrasonicSS.set_trig_echo(TRIGGER_PIN, ECHO_PIN);
   pressureSS.setInputPin(WATER_PRESSURE_PIN);
   moistureSS.setInputPin(MOISTURE_PIN);
 
@@ -614,7 +628,6 @@ void setup()
 
   myActorSet.addActiveActor(myPump);
   myActorSet.addPassiveActor(myVentil);
-
 
   pulseCount = 0;
   flowRate = 0.0;
@@ -693,5 +706,4 @@ void setup()
 void loop()
 {
   os_runloop_once();
-  
 }
