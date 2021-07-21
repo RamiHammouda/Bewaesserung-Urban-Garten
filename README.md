@@ -96,6 +96,7 @@ The ca.800m<sup>2</sup> Urban garden in HTW Berlin locates in the back of the un
 ##### Options:
 - [x] An UI on mobile for convenient monitoring
 - [x] Send Notification to user for alert and notify current status automatically through Telegram with Bot "HTWGarden". (Only Admin received alert)
+- [x] Everyone can query current important status of system through Telegram bot "HTWGarden"
 - [x] Create wrapper classes for multiple sensors/actors (for an easy scalability)
  <br/> <br/>
 ## For testing purpose
